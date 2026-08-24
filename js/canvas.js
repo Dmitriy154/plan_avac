@@ -124,11 +124,24 @@ const CanvasEditor = (function() {
     return best || { x: wx, y: wy };
   }
 
+  // Debounce функция для оптимизации resize
+  function debounce(fn, delay) {
+    var timer = null;
+    return function() {
+      var args = arguments;
+      var context = this;
+      clearTimeout(timer);
+      timer = setTimeout(function() {
+        fn.apply(context, args);
+      }, delay);
+    };
+  }
+
   function init(canvasEl) {
     canvas = canvasEl;
     ctx = canvas.getContext('2d');
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', debounce(resize, 150));
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mouseup', onMouseUp);
@@ -156,6 +169,48 @@ const CanvasEditor = (function() {
   // ========== Координаты ==========
   function screenToWorld(sx, sy) {
     return { x: (sx - panX) / zoom, y: (sy - panY) / zoom };
+  }
+
+  // Расстояние от точки до отрезка
+  function distToSegment(px, py, x1, y1, x2, y2) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var len2 = dx * dx + dy * dy;
+    if (len2 < 1) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+    var t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+    var projX = x1 + t * dx, projY = y1 + t * dy;
+    return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2);
+  }
+
+  // Найти ближайшую точку на стенах для магнита
+  function findSnapPoint(wx, wy) {
+    var best = null, bestDist = SNAP_DIST / zoom;
+    for (var i = 0; i < objects.length; i++) {
+      var o = objects[i];
+      if (o.type !== 'wall' && o.type !== 'partition') continue;
+      if (!o.points || o.points.length < 2) continue;
+      for (var j = 0; j < o.points.length; j++) {
+        var p = o.points[j];
+        var dx = wx - p.x, dy = wy - p.y;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        if (d < bestDist) { bestDist = d; best = { x: p.x, y: p.y, type: 'endpoint', obj: o, idx: j }; }
+      }
+      // Также проверяем проекцию на сегменты
+      for (var j = 0; j < o.points.length - 1; j++) {
+        var p1 = o.points[j], p2 = o.points[j + 1];
+        var dx = p2.x - p1.x, dy = p2.y - p1.y;
+        var len2 = dx * dx + dy * dy;
+        if (len2 < 1) continue;
+        var t = Math.max(0, Math.min(1, ((wx - p1.x) * dx + (wy - p1.y) * dy) / len2));
+        var projX = p1.x + t * dx, projY = p1.y + t * dy;
+        var ddx = wx - projX, ddy = wy - projY;
+        var d = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (d < bestDist && t > 0.01 && t < 0.99) {
+          bestDist = d;
+          best = { x: projX, y: projY, type: 'segment', obj: o, segIdx: j, t: t };
+        }
+      }
+    }
+    return best || { x: wx, y: wy, type: 'none' };
   }
 
   // ========== Отрисовка ==========
@@ -204,6 +259,15 @@ const CanvasEditor = (function() {
         ctx.lineTo(currentPath[i].x, currentPath[i].y);
       }
       var cur = screenToWorld(lastMouseX, lastMouseY);
+      
+      // Проверяем магнит к стенам/путям
+      var snapInfo = findPathSnapPoint(cur.x, cur.y);
+      if (snapInfo.snapped) {
+        cur = { x: snapInfo.x, y: snapInfo.y };
+        // Рисуем подсказку привязки
+        drawSnapHint(snapInfo);
+      }
+      
       ctx.lineTo(cur.x, cur.y);
       ctx.stroke();
       ctx.setLineDash([]);
@@ -354,7 +418,7 @@ const CanvasEditor = (function() {
     ctx.restore();
   }
 
-  // ========== Отрисовка путей с умными стрелками ==========
+  // ========== Магнит для путей эвакуации ==========\n  var PATH_SNAP_DIST = 15;\n  \n  function findPathSnapPoint(wx, wy) {\n    var bestDist = PATH_SNAP_DIST / zoom;\n    var best = null;\n    \n    // Проверяем привязку к концам существующих путей\n    var allPaths = [].concat(paths.main).concat(paths.reserve);\n    for (var i = 0; i < allPaths.length; i++) {\n      var p = allPaths[i];\n      if (!p.points || p.points.length < 2) continue;\n      \n      // Проверяем каждую точку пути\n      for (var j = 0; j < p.points.length; j++) {\n        var pt = p.points[j];\n        var dx = wx - pt.x, dy = wy - pt.y;\n        var d = Math.sqrt(dx * dx + dy * dy);\n        if (d < bestDist) {\n          bestDist = d;\n          best = { x: pt.x, y: pt.y, type: 'path_point', snapped: true };\n        }\n      }\n      \n      // Проверяем привязку к сегментам пути\n      for (var j = 0; j < p.points.length - 1; j++) {\n        var p1 = p.points[j], p2 = p.points[j + 1];\n        var dx = p2.x - p1.x, dy = p2.y - p1.y;\n        var len2 = dx * dx + dy * dy;\n        if (len2 < 1) continue;\n        var t = Math.max(0, Math.min(1, ((wx - p1.x) * dx + (wy - p1.y) * dy) / len2));\n        var projX = p1.x + t * dx, projY = p1.y + t * dy;\n        var ddx = wx - projX, ddy = wy - projY;\n        var d = Math.sqrt(ddx * ddx + ddy * ddy);\n        if (d < bestDist && t > 0.01 && t < 0.99) {\n          bestDist = d;\n          best = { x: projX, y: projY, type: 'path_segment', snapped: true, segStart: p1, segEnd: p2, t: t };\n        }\n      }\n    }\n    \n    // Проверяем привязку к стенам/перегородкам\n    for (var i = 0; i < objects.length; i++) {\n      var o = objects[i];\n      if (o.type !== 'wall' && o.type !== 'partition') continue;\n      if (!o.points || o.points.length < 2) continue;\n      \n      for (var j = 0; j < o.points.length; j++) {\n        var pt = o.points[j];\n        var dx = wx - pt.x, dy = wy - pt.y;\n        var d = Math.sqrt(dx * dx + dy * dy);\n        if (d < bestDist) {\n          bestDist = d;\n          best = { x: pt.x, y: pt.y, type: 'wall_endpoint', snapped: true };\n        }\n      }\n    }\n    \n    return best || { x: wx, y: wy, snapped: false };\n  }\n  \n  function drawSnapHint(snapInfo) {\n    ctx.save();\n    ctx.strokeStyle = '#ef4444';\n    ctx.lineWidth = 2 / zoom;\n    ctx.setLineDash([4 / zoom, 2 / zoom]);\n    \n    // Рисуем кружок в точке привязки\n    ctx.beginPath();\n    ctx.arc(snapInfo.x, snapInfo.y, 6 / zoom, 0, Math.PI * 2);\n    ctx.stroke();\n    \n    // Если привязка к сегменту, рисуем линию вдоль сегмента\n    if (snapInfo.type === 'path_segment') {\n      ctx.beginPath();\n      ctx.moveTo(snapInfo.segStart.x, snapInfo.segStart.y);\n      ctx.lineTo(snapInfo.segEnd.x, snapInfo.segEnd.y);\n      ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';\n      ctx.stroke();\n    }\n    \n    ctx.restore();\n  }\n\n  // ========== Отрисовка путей с умными стрелками ==========
   function drawPaths(pathArray, color, dashed) {
     for (var i = 0; i < pathArray.length; i++) {
       var p = pathArray[i];
@@ -495,13 +559,7 @@ const CanvasEditor = (function() {
       if (isDrawing && (tool === 'pathMain' || tool === 'pathReserve')) finishPath();
       if (isDrawing && (tool === 'wall' || tool === 'partition')) finishPolyline();
     }
-    if (e.key === 'Delete' && selectedObj) {
-      var idx = objects.indexOf(selectedObj);
-      if (idx >= 0) { objects.splice(idx, 1); selectedObj = null; }
-      var idx2 = symbols.indexOf(selectedObj);
-      if (idx2 >= 0) { symbols.splice(idx2, 1); selectedObj = null; }
-      render();
-    }
+    // Delete обрабатывается в app.js для интеграции с Undo/Redo
   }
 
   function onKeyUp(e) {
@@ -680,11 +738,15 @@ const CanvasEditor = (function() {
 
     if (tool === 'pathMain' || tool === 'pathReserve') {
       closeDrawMenu();
+      // Проверяем привязку к стенам/путям
+      var snapInfo = findPathSnapPoint(w.x, w.y);
+      var pointToAdd = snapInfo.snapped ? { x: snapInfo.x, y: snapInfo.y } : { x: w.x, y: w.y };
+      
       if (!isDrawing) {
         isDrawing = true;
-        currentPath = [{ x: w.x, y: w.y }];
+        currentPath = [pointToAdd];
       } else {
-        currentPath.push({ x: w.x, y: w.y });
+        currentPath.push(pointToAdd);
       }
       render();
       return;
@@ -982,6 +1044,26 @@ const CanvasEditor = (function() {
   function setDrawColor(c) { drawColor = c; }
   function setDrawWidth(w) { drawWidth = w; }
 
+  // Получить выделенный объект (для app.js)
+  function getSelectedObject() {
+    return selectedObj;
+  }
+
+  // Удалить выделенный объект (для app.js)
+  function deleteSelected() {
+    if (!selectedObj) return false;
+    var idx = objects.indexOf(selectedObj);
+    if (idx >= 0) { objects.splice(idx, 1); selectedObj = null; render(); return true; }
+    var idx2 = symbols.indexOf(selectedObj);
+    if (idx2 >= 0) { symbols.splice(idx2, 1); selectedObj = null; render(); return true; }
+    var idx3 = -1;
+    if (selectedObj._isLabel) {
+      idx3 = selectedObj._labelIndex;
+    }
+    if (idx3 >= 0) { labels.splice(idx3, 1); selectedObj = null; render(); return true; }
+    return false;
+  }
+
   function clearAll() {
     if (!confirm('Очистить весь план?')) return;
     objects = [];
@@ -1232,12 +1314,21 @@ const CanvasEditor = (function() {
     getData: getData, setData: setData, getFullImageDataURL: getFullImageDataURL,
     setDrawColor: setDrawColor, setDrawWidth: setDrawWidth,
     getTool: function() { return tool; },
+    getSelectedObject: getSelectedObject, deleteSelected: deleteSelected,
     getBgLayers: function() { return bgLayers; },
     getObjects: function() { return objects; },
     getPaths: function() { return paths; },
     getSymbols: function() { return symbols; },
     getLabels: function() { return labels; },
     setZoom: function(z) { zoom = z; render(); },
-    setPan: function(x, y) { panX = x; panY = y; render(); }
+    setPan: function(x, y) { panX = x; panY = y; render(); },
+    exportPNG: function() {
+      var dataUrl = getFullImageDataURL();
+      if (!dataUrl) { alert('План пуст'); return; }
+      var link = document.createElement('a');
+      link.download = 'plan-evacuation.png';
+      link.href = dataUrl;
+      link.click();
+    }
   };
 })();
