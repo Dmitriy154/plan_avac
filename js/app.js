@@ -5,6 +5,95 @@
 
   var currentProject = null;
 
+  // ========== Undo/Redo система ==========
+  var HistoryManager = (function() {
+    var stack = [];
+    var pointer = -1;
+    var maxSize = 50;
+
+    function getState() {
+      return CanvasEditor.getData();
+    }
+
+    function setState(state) {
+      CanvasEditor.setData(state);
+    }
+
+    function push() {
+      var state = getState();
+      if (!state) return;
+      stack = stack.slice(0, pointer + 1);
+      stack.push(JSON.stringify(state));
+      if (stack.length > maxSize) {
+        stack.shift();
+      } else {
+        pointer++;
+      }
+      updateButtons();
+    }
+
+    function undo() {
+      if (pointer > 0) {
+        pointer--;
+        setState(JSON.parse(stack[pointer]));
+        updateButtons();
+        return true;
+      }
+      return false;
+    }
+
+    function redo() {
+      if (pointer < stack.length - 1) {
+        pointer++;
+        setState(JSON.parse(stack[pointer]));
+        updateButtons();
+        return true;
+      }
+      return false;
+    }
+
+    function clear() {
+      stack = [];
+      pointer = -1;
+      updateButtons();
+    }
+
+    function updateButtons() {
+      var undoBtn = document.getElementById('btnUndo');
+      var redoBtn = document.getElementById('btnRedo');
+      if (undoBtn) undoBtn.disabled = pointer <= 0;
+      if (redoBtn) redoBtn.disabled = pointer >= stack.length - 1;
+    }
+
+    function init() {
+      document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) { redo(); } else { undo(); }
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+          e.preventDefault();
+          redo();
+        }
+      });
+    }
+
+    return { push: push, undo: undo, redo: redo, clear: clear, init: init };
+  })();
+
+  // ========== Дебаунс функция ==========
+  function debounce(fn, delay) {
+    var timer = null;
+    return function() {
+      var args = arguments;
+      var context = this;
+      clearTimeout(timer);
+      timer = setTimeout(function() {
+        fn.apply(context, args);
+      }, delay);
+    };
+  }
+
   // ========== Навигация ==========
   function showScreen(id) {
     document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
@@ -116,6 +205,9 @@
   }
 
   function initEditor() {
+    // Инициализация Undo/Redo
+    HistoryManager.init();
+
     // Кнопка «На главную» (редактор)
     document.getElementById('btnHome').addEventListener('click', function() {
       saveCurrentProject();
@@ -186,6 +278,22 @@
       if (drawMenu) drawMenu.classList.remove('show');
     });
 
+    // Обновление видимости панели свойств рисования при смене инструмента
+    function updateDrawPropsVisibility() {
+      if (drawPropsPanel) {
+        var currentTool = CanvasEditor.getTool ? CanvasEditor.getTool() : '';
+        var isDrawTool = ['wall', 'partition', 'line'].indexOf(currentTool) >= 0;
+        drawPropsPanel.style.display = isDrawTool ? 'flex' : 'none';
+      }
+    }
+
+    // Вызываем updateDrawPropsVisibility при смене инструмента
+    var originalSetTool = CanvasEditor.setTool;
+    CanvasEditor.setTool = function(t) {
+      originalSetTool.call(CanvasEditor, t);
+      updateDrawPropsVisibility();
+    };
+
     // Панель свойств рисования
     var drawColorEl = document.getElementById('drawColor');
     var drawWidthEl = document.getElementById('drawWidth');
@@ -193,6 +301,7 @@
     if (drawColorEl) {
       drawColorEl.addEventListener('input', function() {
         CanvasEditor.setDrawColor(drawColorEl.value);
+        HistoryManager.push();
       });
     }
     if (drawWidthEl) {
@@ -217,7 +326,13 @@
           layer.dataUrl = ev.target.result;
           CanvasEditor.fitToAll();
         };
+        img.onerror = function() {
+          alert('Ошибка загрузки изображения: ' + file.name);
+        };
         img.src = ev.target.result;
+      };
+      reader.onerror = function() {
+        alert('Ошибка чтения файла: ' + file.name);
       };
       reader.readAsDataURL(file);
       e.target.value = '';
@@ -226,6 +341,24 @@
     // Очистка
     document.getElementById('btnClear').addEventListener('click', function() {
       CanvasEditor.clearAll();
+      HistoryManager.clear();
+    });
+
+    // Горячие клавиши — сохранение Ctrl+S, Delete для удаления
+    document.addEventListener('keydown', function(e) {
+      // Ctrl+S — сохранение
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveCurrentProject();
+      }
+      // Delete — удаление выделенного объекта
+      if (e.key === 'Delete') {
+        var sel = CanvasEditor.getSelectedObject ? CanvasEditor.getSelectedObject() : null;
+        if (sel) {
+          CanvasEditor.deleteSelected();
+          HistoryManager.push();
+        }
+      }
     });
 
     // Пожарные символы
@@ -260,6 +393,9 @@
       var canvasData = CanvasEditor.getData();
       var textData = TextPart.getFormData();
       ExportPDF.exportToPDF(canvasData, textData);
+    });
+    document.getElementById('btnExportPNG').addEventListener('click', function() {
+      CanvasEditor.exportPNG();
     });
     document.getElementById('btnExportJSON').addEventListener('click', function() {
       saveCurrentProject();
