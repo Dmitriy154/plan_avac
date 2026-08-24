@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>План эвакуации — Создание планов эвакуации при пожаре</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ==================== ЭКРАН 0: СТАРТОВАЯ СТРАНИЦА ==================== -->
+<div id="startScreen" class="screen active">
+  <div class="start-header">
+    <div class="start-logo">🔥</div>
+    <h1>ПЛАН ЭВАКУАЦИИ</h1>
+    <p>Создание планов эвакуации людей при пожаре · Постановление МЧС РБ №82</p>
+  </div>
+  <div class="start-notice">
+    Соответствует приложению 2 к постановлению МЧС РБ от 21.12.2021 №82 
+    (в ред. постановления от 12.12.2025 №61)
+  </div>
+  <div class="start-cards">
+    <button class="start-card card-primary" id="btnNewProject">
+      <div class="sc-ico">➕</div>
+      <div class="sc-body">
+        <div class="sc-title">Новый проект</div>
+        <div class="sc-sub">Создать план эвакуации для этажа</div>
+      </div>
+    </button>
+    <button class="start-card card-blue" id="btnLoadProject">
+      <div class="sc-ico">📂</div>
+      <div class="sc-body">
+        <div class="sc-title">Загрузить проект</div>
+        <div class="sc-sub">Открыть сохранённый файл (.json)</div>
+      </div>
+    </button>
+    <div class="start-card card-amber" id="recentCard">
+      <div class="sc-ico">💾</div>
+      <div class="sc-body">
+        <div class="sc-title">Сохранённые проекты</div>
+        <div class="sc-sub">Последние проекты на этом устройстве</div>
+      </div>
+      <div id="recentProjects"></div>
+    </div>
+  </div>
+  <input type="file" id="projectFileLoader" accept=".json,application/json" style="display:none">
+  <div class="start-footer">Постановление МЧС РБ №82 (ред. №61) · версия 1.0</div>
+</div>
+
+<!-- ==================== ЭКРАН 1: РЕДАКТОР ПЛАНА ==================== -->
+<div id="editorScreen" class="screen">
+  <!-- Верхняя панель -->
+  <div id="editorHeader">
+    <button class="btn-icon" id="btnHome" title="На главную">
+      <i class="bi bi-house"></i>
+    </button>
+    <input type="text" class="project-name-input" id="projectName" value="Новый проект" placeholder="Название проекта">
+    <span class="project-meta" id="projectMeta"></span>
+    <div class="header-tabs">
+      <button class="header-tab active" data-tab="editor">
+        <i class="bi bi-pencil-square"></i> План
+      </button>
+      <button class="header-tab" data-tab="text">
+        <i class="bi bi-file-text"></i> Текстовая часть
+      </button>
+      <button class="header-tab" data-tab="export">
+        <i class="bi bi-file-earmark-pdf"></i> Экспорт
+      </button>
+    </div>
+    <button class="btn-save" id="btnSaveProject">
+      <i class="bi bi-check-lg"></i> Сохранить
+    </button>
+  </div>
+
+  <!-- Панель инструментов (левая) -->
+  <div id="toolbar">
+    <button class="tb-btn tb-btn-accent" id="btnBgImage" title="Загрузить план этажа">
+      <div class="tb-ico"><i class="bi bi-image"></i></div>
+      <span>Подложка</span>
+    </button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn" id="btnLabel" title="Надпись (текст на плане)">
+      <div class="tb-ico" style="background:#f1f5f9;color:#334155"><i class="bi bi-fonts"></i></div>
+      <span>Надпись</span>
+    </button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn tb-btn-green" id="btnPathMain" title="Основной путь эвакуации">
+      <div class="tb-ico"><i class="bi bi-arrow-right"></i></div>
+      <span>Основной путь</span>
+    </button>
+    <button class="tb-btn tb-btn-orange" id="btnPathReserve" title="Запасный путь эвакуации">
+      <div class="tb-ico" style="background: repeating-linear-gradient(90deg, #d1fae5 0px, #d1fae5 4px, transparent 4px, transparent 7px); color: #059669"><i class="bi bi-arrow-right"></i></div>
+      <span>Запасный путь</span>
+    </button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn tb-btn-red" id="btnSymbol" title="Пожарные символы">
+      <div class="tb-ico"><i class="bi bi-emoji-smile"></i></div>
+      <span>Символы</span>
+    </button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn tb-btn-purple" id="btnEditor" title="Режим редактирования (выделение, перемещение, удаление)">
+      <div class="tb-ico"><i class="bi bi-arrow-move"></i></div>
+      <span>Редактор</span>
+    </button>
+    <div class="tb-dropdown" id="drawDropdown">
+      <button class="tb-btn tb-btn-blue" id="btnDraw" title="Рисование (стены, перегородки, линии)">
+        <div class="tb-ico"><i class="bi bi-pencil"></i></div>
+        <span>Рисование</span>
+        <i class="bi bi-chevron-down tb-chevron"></i>
+      </button>
+      <div class="tb-dropdown-menu" id="drawMenu">
+        <button class="tb-dd-item active" data-draw="wall">
+          <i class="bi bi-square"></i> Стена
+        </button>
+        <button class="tb-dd-item" data-draw="partition">
+          <i class="bi bi-dash"></i> Перегородка
+        </button>
+        <button class="tb-dd-item" data-draw="line">
+          <i class="bi bi-slash-lg"></i> Линия
+        </button>
+      </div>
+    </div>
+    <div class="tb-sep"></div>
+    <button class="tb-btn tb-btn-danger" id="btnClear" title="Очистить план">
+      <div class="tb-ico"><i class="bi bi-trash"></i></div>
+      <span>Очистить</span>
+    </button>
+  </div>
+
+  <!-- Подсказка для Shift -->
+  <div id="shiftHint" class="shift-hint" style="display:none">
+    <i class="bi bi-arrow-90deg"></i> Shift: углы 90°
+  </div>
+
+  <!-- Canvas -->
+  <div id="canvasWrap">
+    <canvas id="cv"></canvas>
+    <div id="hint"></div>
+    <!-- Панель подсказок -->
+    <div id="canvasInfo">
+      <span id="scaleDisplay">Масштаб: —</span>
+      <span id="cursorPos">X: 0, Y: 0</span>
+    </div>
+  </div>
+
+  <!-- Панель слоёв подложки (правая) -->
+  <div id="bgPanel" class="side-panel">
+    <div class="sp-header">
+      <span>Подложка</span>
+      <button class="btn-close" id="bgPanelClose"><i class="bi bi-x"></i></button>
+    </div>
+    <div class="sp-body" id="bgLayerList"></div>
+    <div class="sp-footer">
+      <button class="btn-sm" id="bgAddLayerBtn"><i class="bi bi-plus"></i> Добавить</button>
+      <button class="btn-sm" id="bgMoveToggle"><i class="bi bi-arrows-move"></i> Переместить</button>
+    </div>
+  </div>
+
+  <!-- Панель пожарных символов -->
+  <div id="symbolPanel" class="side-panel" style="display:none">
+    <div class="sp-header">
+      <span>Пожарные символы</span>
+      <button class="btn-close" id="symbolPanelClose"><i class="bi bi-x"></i></button>
+    </div>
+    <div class="sp-body" id="symbolList"></div>
+  </div>
+
+  <!-- Панель редактирования свойств -->
+  <div id="propsPanel" class="side-panel" style="display:none">
+    <div class="sp-header">
+      <span>Свойства</span>
+      <button class="btn-close" id="propsPanelClose"><i class="bi bi-x"></i></button>
+    </div>
+    <div class="sp-body" id="propsContent"></div>
+  </div>
+
+  <input type="file" id="imageLoader" accept="image/*" style="display:none">
+</div>
+
+<!-- ==================== ЭКРАН 2: ТЕКСТОВАЯ ЧАСТЬ ==================== -->
+<div id="textScreen" class="screen">
+  <div id="textHeader">
+    <button class="btn-icon" id="btnTextHome" title="На главную">
+      <i class="bi bi-house"></i>
+    </button>
+    <div class="header-tabs">
+      <button class="header-tab" data-tab="editor">
+        <i class="bi bi-pencil-square"></i> План
+      </button>
+      <button class="header-tab active" data-tab="text">
+        <i class="bi bi-file-text"></i> Текстовая часть
+      </button>
+      <button class="header-tab" data-tab="export">
+        <i class="bi bi-file-earmark-pdf"></i> Экспорт
+      </button>
+    </div>
+    <button class="btn-save" id="btnSaveText">
+      <i class="bi bi-check-lg"></i> Сохранить
+    </button>
+  </div>
+  <div id="textContent">
+    <div class="text-form-wrap">
+      <!-- Гриф утверждения -->
+      <div class="approval-block">
+        <div class="approval-line">
+          <span class="approval-label">Утверждаю</span>
+          <span class="approval-field" contenteditable="true" id="approvalRole">Руководитель</span>
+          <span class="approval-field" contenteditable="true" id="approvalOrg">наименование организации</span>
+        </div>
+        <div class="approval-line">
+          <span class="approval-field" contenteditable="true" id="approvalName">ФИО</span>
+        </div>
+        <div class="approval-line">
+          <span class="approval-field" contenteditable="true" id="approvalDate">«___» __________ 20___ г.</span>
+        </div>
+      </div>
+
+      <h4 class="text-center mt-4 mb-3">ИНСТРУКЦИЯ К ПЛАНУ ЭВАКУАЦИИ ЛЮДЕЙ ПРИ ПОЖАРЕ</h4>
+
+      <!-- Таблица инструкции -->
+      <div class="table-responsive">
+        <table class="table table-bordered instruction-table" id="instructionTable">
+          <thead>
+            <tr>
+              <th style="width:5%">№</th>
+              <th style="width:35%">Порядок действий</th>
+              <th style="width:35%">Исполнитель</th>
+              <th style="width:25%">Примечание</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-center">1</td>
+              <td contenteditable="true">Обнаружив пожар (или получив сообщение о пожаре), немедленно сообщить об этом по телефону 101, указав: наименование объекта, адрес, место возникновения пожара, а также сообщить руководителю (лицу, ответственному за пожарную безопасность)</td>
+              <td contenteditable="true">Работник, обнаруживший пожар</td>
+              <td contenteditable="true"></td>
+            </tr>
+            <tr>
+              <td class="text-center">2</td>
+              <td contenteditable="true">Оповестить людей о пожаре устно, по телефону, оповещателю или иным способом, обеспечив их безопасную эвакуацию</td>
+              <td contenteditable="true">Лицо, определённое общеобъектовой инструкцией по пожарной безопасности</td>
+              <td contenteditable="true"></td>
+            </tr>
+            <tr>
+              <td class="text-center">3</td>
+              <td contenteditable="true">Организовать эвакуацию людей из помещений, в которых возник пожар, и смежных помещений, находящихся в путях эвакуации, вывести их в безопасные места (наружу здания, в лестничные клетки)</td>
+              <td contenteditable="true">Лицо, определённое общеобъектовой инструкцией по пожарной безопасности</td>
+              <td contenteditable="true"></td>
+            </tr>
+            <tr>
+              <td class="text-center">4</td>
+              <td contenteditable="true">Принять посильное участие в тушении пожара до прибытия пожарного аварийно-спасательного подразделения, используя имеющиеся первичные средства пожаротушения</td>
+              <td contenteditable="true">Члены пожарной дружины</td>
+              <td contenteditable="true"></td>
+            </tr>
+            <tr>
+              <td class="text-center">5</td>
+              <td contenteditable="true">Встретить пожарное аварийно-спасательное подразделение, указать место пожара, сообщить необходимые сведения, обеспечить доступ к внутреннему противопожарному водоснабжению и электрооборудованию</td>
+              <td contenteditable="true">Лицо, определённое общеобъектовой инструкцией по пожарной безопасности</td>
+              <td contenteditable="true"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Телефоны -->
+      <div class="phones-block">
+        <h5>Телефоны для вызова:</h5>
+        <div class="phone-row">
+          <span class="phone-label">Пожарная охрана:</span>
+          <span class="phone-number">101</span>
+        </div>
+        <div class="phone-row">
+          <span class="phone-label">Единый номер вызова:</span>
+          <span class="phone-number">112</span>
+        </div>
+        <div class="phone-row">
+          <span class="phone-label">Руководитель:</span>
+          <span class="phone-field" contenteditable="true" id="phoneDirector">_______________</span>
+        </div>
+        <div class="phone-row">
+          <span class="phone-label">Ответственный дежурный:</span>
+          <span class="phone-field" contenteditable="true" id="phoneDuty">_______________</span>
+        </div>
+      </div>
+
+      <!-- Реквизиты -->
+      <div class="requisites-block">
+        <div class="req-line">
+          <span class="req-label">Наименование объекта:</span>
+          <span class="req-field" contenteditable="true" id="reqObject">_______________</span>
+        </div>
+        <div class="req-line">
+          <span class="req-label">Адрес объекта:</span>
+          <span class="req-field" contenteditable="true" id="reqAddress">_______________</span>
+        </div>
+        <div class="req-line">
+          <span class="req-label">План составил:</span>
+          <span class="req-field" contenteditable="true" id="reqAuthor">_______________</span>
+        </div>
+        <div class="req-line">
+          <span class="req-label">Должность:</span>
+          <span class="req-field" contenteditable="true" id="reqAuthorRole">_______________</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ЭКРАН 3: ЭКСПОРТ ==================== -->
+<div id="exportScreen" class="screen">
+  <div id="exportHeader">
+    <button class="btn-icon" id="btnExportHome" title="На главную">
+      <i class="bi bi-house"></i>
+    </button>
+    <div class="header-tabs">
+      <button class="header-tab" data-tab="editor">
+        <i class="bi bi-pencil-square"></i> План
+      </button>
+      <button class="header-tab" data-tab="text">
+        <i class="bi bi-file-text"></i> Текстовая часть
+      </button>
+      <button class="header-tab active" data-tab="export">
+        <i class="bi bi-file-earmark-pdf"></i> Экспорт
+      </button>
+    </div>
+    <div></div>
+  </div>
+  <div id="exportContent">
+    <div class="export-options">
+      <div class="export-card">
+        <h5>Предпросмотр</h5>
+        <div class="preview-wrap" id="previewWrap">
+          <div class="preview-placeholder">
+            <i class="bi bi-image"></i>
+            <p>Нажмите «Сформировать предпросмотр»</p>
+          </div>
+        </div>
+      </div>
+      <div class="export-actions">
+        <button class="btn-c btn-c-primary" id="btnPreview">
+          <i class="bi bi-eye"></i> Сформировать предпросмотр
+        </button>
+        <button class="btn-c btn-c-primary" id="btnExportPDF">
+          <i class="bi bi-file-earmark-pdf"></i> Экспорт в PDF (А3)
+        </button>
+        <button class="btn-c" id="btnExportJSON">
+          <i class="bi bi-download"></i> Сохранить проект (.json)
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Диалог текста надписи -->
+<div class="modal" id="textDialog" hidden>
+  <div class="modal-box">
+    <h3 id="textDialogTitle">Надпись</h3>
+    <textarea id="tdText" placeholder="Введите текст..."></textarea>
+    <div class="m-row">
+      <label>Размер <input type="number" id="tdSize" min="6" max="96" value="14"></label>
+      <label><input type="checkbox" id="tdBold"> Жирный</label>
+      <label><input type="checkbox" id="tdItalic"> Курсив</label>
+    </div>
+    <div class="m-row">
+      <label>Шрифт
+        <select id="tdFont">
+          <option value="sans-serif">Без засечек</option>
+          <option value="serif">С засечками</option>
+          <option value="monospace">Моноширинный</option>
+          <option value="Arial">Arial</option>
+          <option value="Verdana">Verdana</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Courier New">Courier New</option>
+        </select>
+      </label>
+    </div>
+    <div class="m-row">
+      <label>Текст <input type="color" id="tdColor" value="#000000"></label>
+      <label>Фон <input type="color" id="tdBg" value="#ffffff"></label>
+      <label><input type="checkbox" id="tdNoBg" checked> Без фона</label>
+    </div>
+    <div class="m-note">Enter — перенос, Ctrl+Enter — подтвердить</div>
+    <div class="m-actions">
+      <button class="btn-cancel" id="tdCancel">Отмена</button>
+      <button class="btn-ok" id="tdOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Скрытый контейнер для генерации PDF -->
+<div id="pdfRenderArea" style="position:absolute;left:-9999px;top:0;width:420mm;height:297mm;"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/symbols.js"></script>
+<script src="js/canvas.js"></script>
+<script src="js/evacuation.js"></script>
+<script src="js/text-part.js"></script>
+<script src="js/export-pdf.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
