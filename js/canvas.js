@@ -418,7 +418,91 @@ const CanvasEditor = (function() {
     ctx.restore();
   }
 
-  // ========== Магнит для путей эвакуации ==========\n  var PATH_SNAP_DIST = 15;\n  \n  function findPathSnapPoint(wx, wy) {\n    var bestDist = PATH_SNAP_DIST / zoom;\n    var best = null;\n    \n    // Проверяем привязку к концам существующих путей\n    var allPaths = [].concat(paths.main).concat(paths.reserve);\n    for (var i = 0; i < allPaths.length; i++) {\n      var p = allPaths[i];\n      if (!p.points || p.points.length < 2) continue;\n      \n      // Проверяем каждую точку пути\n      for (var j = 0; j < p.points.length; j++) {\n        var pt = p.points[j];\n        var dx = wx - pt.x, dy = wy - pt.y;\n        var d = Math.sqrt(dx * dx + dy * dy);\n        if (d < bestDist) {\n          bestDist = d;\n          best = { x: pt.x, y: pt.y, type: 'path_point', snapped: true };\n        }\n      }\n      \n      // Проверяем привязку к сегментам пути\n      for (var j = 0; j < p.points.length - 1; j++) {\n        var p1 = p.points[j], p2 = p.points[j + 1];\n        var dx = p2.x - p1.x, dy = p2.y - p1.y;\n        var len2 = dx * dx + dy * dy;\n        if (len2 < 1) continue;\n        var t = Math.max(0, Math.min(1, ((wx - p1.x) * dx + (wy - p1.y) * dy) / len2));\n        var projX = p1.x + t * dx, projY = p1.y + t * dy;\n        var ddx = wx - projX, ddy = wy - projY;\n        var d = Math.sqrt(ddx * ddx + ddy * ddy);\n        if (d < bestDist && t > 0.01 && t < 0.99) {\n          bestDist = d;\n          best = { x: projX, y: projY, type: 'path_segment', snapped: true, segStart: p1, segEnd: p2, t: t };\n        }\n      }\n    }\n    \n    // Проверяем привязку к стенам/перегородкам\n    for (var i = 0; i < objects.length; i++) {\n      var o = objects[i];\n      if (o.type !== 'wall' && o.type !== 'partition') continue;\n      if (!o.points || o.points.length < 2) continue;\n      \n      for (var j = 0; j < o.points.length; j++) {\n        var pt = o.points[j];\n        var dx = wx - pt.x, dy = wy - pt.y;\n        var d = Math.sqrt(dx * dx + dy * dy);\n        if (d < bestDist) {\n          bestDist = d;\n          best = { x: pt.x, y: pt.y, type: 'wall_endpoint', snapped: true };\n        }\n      }\n    }\n    \n    return best || { x: wx, y: wy, snapped: false };\n  }\n  \n  function drawSnapHint(snapInfo) {\n    ctx.save();\n    ctx.strokeStyle = '#ef4444';\n    ctx.lineWidth = 2 / zoom;\n    ctx.setLineDash([4 / zoom, 2 / zoom]);\n    \n    // Рисуем кружок в точке привязки\n    ctx.beginPath();\n    ctx.arc(snapInfo.x, snapInfo.y, 6 / zoom, 0, Math.PI * 2);\n    ctx.stroke();\n    \n    // Если привязка к сегменту, рисуем линию вдоль сегмента\n    if (snapInfo.type === 'path_segment') {\n      ctx.beginPath();\n      ctx.moveTo(snapInfo.segStart.x, snapInfo.segStart.y);\n      ctx.lineTo(snapInfo.segEnd.x, snapInfo.segEnd.y);\n      ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';\n      ctx.stroke();\n    }\n    \n    ctx.restore();\n  }\n\n  // ========== Отрисовка путей с умными стрелками ==========
+  // ========== Магнит для путей эвакуации ==========
+  var PATH_SNAP_DIST = 15;
+  
+  function findPathSnapPoint(wx, wy) {
+    var bestDist = PATH_SNAP_DIST / zoom;
+    var best = null;
+    
+    // Проверяем привязку к концам существующих путей
+    var allPaths = [].concat(paths.main).concat(paths.reserve);
+    for (var i = 0; i < allPaths.length; i++) {
+      var p = allPaths[i];
+      if (!p.points || p.points.length < 2) continue;
+      
+      // Проверяем каждую точку пути
+      for (var j = 0; j < p.points.length; j++) {
+        var pt = p.points[j];
+        var dx = wx - pt.x, dy = wy - pt.y;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        if (d < bestDist) {
+          bestDist = d;
+          best = { x: pt.x, y: pt.y, type: 'path_point', snapped: true };
+        }
+      }
+      
+      // Проверяем привязку к сегментам пути
+      for (var j = 0; j < p.points.length - 1; j++) {
+        var p1 = p.points[j], p2 = p.points[j + 1];
+        var dx = p2.x - p1.x, dy = p2.y - p1.y;
+        var len2 = dx * dx + dy * dy;
+        if (len2 < 1) continue;
+        var t = Math.max(0, Math.min(1, ((wx - p1.x) * dx + (wy - p1.y) * dy) / len2));
+        var projX = p1.x + t * dx, projY = p1.y + t * dy;
+        var ddx = wx - projX, ddy = wy - projY;
+        var d = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (d < bestDist && t > 0.01 && t < 0.99) {
+          bestDist = d;
+          best = { x: projX, y: projY, type: 'path_segment', snapped: true, segStart: p1, segEnd: p2, t: t };
+        }
+      }
+    }
+    
+    // Проверяем привязку к стенам/перегородкам
+    for (var i = 0; i < objects.length; i++) {
+      var o = objects[i];
+      if (o.type !== 'wall' && o.type !== 'partition') continue;
+      if (!o.points || o.points.length < 2) continue;
+      
+      for (var j = 0; j < o.points.length; j++) {
+        var pt = o.points[j];
+        var dx = wx - pt.x, dy = wy - pt.y;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        if (d < bestDist) {
+          bestDist = d;
+          best = { x: pt.x, y: pt.y, type: 'wall_endpoint', snapped: true };
+        }
+      }
+    }
+    
+    return best || { x: wx, y: wy, snapped: false };
+  }
+  
+  function drawSnapHint(snapInfo) {
+    ctx.save();
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2 / zoom;
+    ctx.setLineDash([4 / zoom, 2 / zoom]);
+    
+    // Рисуем кружок в точке привязки
+    ctx.beginPath();
+    ctx.arc(snapInfo.x, snapInfo.y, 6 / zoom, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Если привязка к сегменту, рисуем линию вдоль сегмента
+    if (snapInfo.type === 'path_segment') {
+      ctx.beginPath();
+      ctx.moveTo(snapInfo.segStart.x, snapInfo.segStart.y);
+      ctx.lineTo(snapInfo.segEnd.x, snapInfo.segEnd.y);
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+  }
+
+  // ========== Отрисовка путей с умными стрелками ==========
   function drawPaths(pathArray, color, dashed) {
     for (var i = 0; i < pathArray.length; i++) {
       var p = pathArray[i];

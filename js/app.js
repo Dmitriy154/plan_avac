@@ -278,6 +278,9 @@
       if (drawMenu) drawMenu.classList.remove('show');
     });
 
+    // Панель свойств рисования
+    var drawPropsPanel = document.getElementById('drawProps');
+    
     // Обновление видимости панели свойств рисования при смене инструмента
     function updateDrawPropsVisibility() {
       if (drawPropsPanel) {
@@ -294,7 +297,7 @@
       updateDrawPropsVisibility();
     };
 
-    // Панель свойств рисования
+    // Панель свойств рисования - элементы управления
     var drawColorEl = document.getElementById('drawColor');
     var drawWidthEl = document.getElementById('drawWidth');
     var drawWidthVal = document.getElementById('drawWidthVal');
